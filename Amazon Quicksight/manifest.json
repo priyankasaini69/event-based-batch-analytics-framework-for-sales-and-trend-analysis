@@ -1,0 +1,12 @@
+{
+    "fileLocations": [
+        {
+            "URIPrefixes": [
+                "s3://aggregated-layer/DEL-Store/DEL-A/2023-07-13/part-00000-6a5c993f-6979-48cd-9752-126de494973c-c000.csv"
+            ]
+        }
+    ],
+    "globalUploadSettings": {
+        "format": "CSV"
+    }
+}

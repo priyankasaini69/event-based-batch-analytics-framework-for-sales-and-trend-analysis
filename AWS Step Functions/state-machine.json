@@ -1,0 +1,112 @@
+{
+    "Comment": "EMR Cluster and Step Execution",
+    "StartAt": "Check ClusterID",
+    "States": {
+      "Check ClusterID": {
+        "Type": "Choice",
+        "Choices": [
+          {
+            "Variable": "$.createCluster",
+            "NumericEquals": 1,
+            "Next": "CreateEMRCluster"
+          }
+        ],
+        "Default": "RunEMRStep"
+      },
+      "CreateEMRCluster": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::elasticmapreduce:createCluster.sync",
+        "Parameters": {
+          "Name": "EMR-1-Cluster",
+          "ReleaseLabel": "emr-6.11.0",
+          "Applications": [
+            {
+              "Name": "Hadoop"
+            },
+            {
+              "Name": "Hive"
+            },
+            {
+              "Name": "Spark"
+            }
+          ],
+          "Instances": {
+            "InstanceGroups": [
+              {
+                "Name": "Master Instance Group",
+                "Market": "ON_DEMAND",
+                "InstanceRole": "MASTER",
+                "InstanceType": "m5.xlarge",
+                "InstanceCount": 1
+              },
+              {
+                "Name": "Core Instance Group",
+                "Market": "ON_DEMAND",
+                "InstanceRole": "CORE",
+                "InstanceType": "m5.xlarge",
+                "InstanceCount": 1
+              }
+            ],
+            "Ec2KeyName": "EMR-Cluster_Key",
+            "KeepJobFlowAliveWhenNoSteps": true
+          },
+          "BootstrapActions": [
+            {
+              "Name": "BootstrapAction1",
+              "ScriptBootstrapAction": {
+                "Path": "s3://loogs-collektion/Bootstrap-Actions/boot.sh"
+              }
+            }
+          ],
+          "VisibleToAllUsers": true,
+          "ServiceRole": "arn:aws:iam::251784258286:role/Amazon-EMR-service-role-new1",
+          "JobFlowRole": "arn:aws:iam::251784258286:instance-profile/EC2-instance-profile-for-Amazon-EMR-new1",
+          "LogUri": "s3://loogs-collektion/EMR-1-Cluster-LOGS/"
+        },
+        "ResultPath": "$.cluster",
+        "Next": "RunEMRStep"
+      },
+      "RunEMRStep": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::elasticmapreduce:addStep.sync",
+        "Parameters": {
+          "ClusterId.$": "$.cluster.ClusterId",
+          "Step": {
+            "Name": "PySparkJob",
+            "ActionOnFailure": "CONTINUE",
+            "HadoopJarStep": {
+              "Jar": "command-runner.jar",
+              "Args.$": "States.Array('spark-submit','--deploy-mode','cluster','--master','yarn','--conf','spark.yarn.submit.waitAppCompletion=true','s3://loogs-collektion/PySpark-Job/Script/pyspark3.py','--folder',$.folder)"
+            }
+          }
+        },
+        "ResultPath": "$.error",
+        "Catch": [
+          {
+            "ErrorEquals": [
+              "States.TaskFailed"
+            ],
+            "ResultPath": "$.error",
+            "Next": "LambdaFunction"
+          }
+        ],
+        "Next": "TerminateCluster"
+      },
+      "LambdaFunction": {
+        "Type": "Task",
+        "Resource": "arn:aws:lambda:ap-south-1:251784258286:function:Handle-Error",
+        "Parameters":{
+          "folder.$": "$.folder"
+        },
+        "Next": "TerminateCluster"
+      },
+      "TerminateCluster": {
+        "Type": "Task",
+        "Resource": "arn:aws:states:::elasticmapreduce:terminateCluster.sync",
+        "Parameters": {
+          "ClusterId.$": "$.cluster.ClusterId"
+        },
+        "End": true
+      }
+    }
+  }
